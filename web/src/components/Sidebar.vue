@@ -695,7 +695,7 @@ async function markAnnouncementRead() {
           <div class="flex items-center gap-2">
             <span>Web v{{ version }}</span>
             <a
-              href="https://github.com/XyhTender/qq_farm-automation-bot"
+              href="https://github.com/XyhTender/qq-farm-automation-bot"
               target="_blank"
               rel="noopener noreferrer"
               title="开源地址"

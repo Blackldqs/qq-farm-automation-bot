@@ -29,7 +29,7 @@ const DEFAULT_ACCOUNT_CONFIG = {
     automation: {
         farm: true,
         farm_push: true,   // 收到 LandsNotify 推送时是否立即触发巡田
-        land_upgrade: true, // 是否自动升级土地
+        land_upgrade: false, // 是否自动升级土地
         friend: true,       // 好友互动总开关
         friend_help_exp_limit: true, // 帮忙经验达上限后自动停止帮忙
         friend_steal: true, // 偷菜
@@ -46,7 +46,7 @@ const DEFAULT_ACCOUNT_CONFIG = {
         fertilizer_gift: false,
         fertilizer_buy: false,
         sell: true,
-        fertilizer: 'normal',
+        fertilizer: 'smart',
         skip_own_weed_bug: true,  // 不除自己草虫
     },
     plantingStrategy: 'max_exp',
@@ -83,6 +83,10 @@ const DEFAULT_ACCOUNT_CONFIG = {
     plantOrderRandom: true,
     // 自己农田种植时每块地间隔秒数（0=使用默认50ms）
     plantDelaySeconds: 2,
+    // 化肥购买类型：organic（有机）或 inorganic（无机）
+    fertilizerBuyType: 'organic',
+    // 化肥购买数量（0=不限制，购买到点券不足为止）
+    fertilizerBuyCount: 1,
 };
 const ALLOWED_AUTOMATION_KEYS = new Set(Object.keys(DEFAULT_ACCOUNT_CONFIG.automation));
 
@@ -261,6 +265,17 @@ function normalizeAccountConfig(input, fallback = accountFallbackConfig) {
     // 种植延迟
     if (src.plantDelaySeconds !== undefined && src.plantDelaySeconds !== null) {
         cfg.plantDelaySeconds = Math.max(0, Math.min(60, Number(src.plantDelaySeconds) || 0));
+    }
+
+    // 化肥购买类型
+    if (src.fertilizerBuyType !== undefined && src.fertilizerBuyType !== null) {
+        const allowedTypes = ['organic', 'inorganic'];
+        cfg.fertilizerBuyType = allowedTypes.includes(src.fertilizerBuyType) ? src.fertilizerBuyType : 'organic';
+    }
+
+    // 化肥购买数量
+    if (src.fertilizerBuyCount !== undefined && src.fertilizerBuyCount !== null) {
+        cfg.fertilizerBuyCount = Math.max(0, Math.min(10000, Number(src.fertilizerBuyCount) || 0));
     }
 
     return cfg;
@@ -452,6 +467,8 @@ function getConfigSnapshot(accountId) {
         stealDelaySeconds: Math.max(0, Math.min(300, Number(cfg.stealDelaySeconds) || 0)),
         plantOrderRandom: !!cfg.plantOrderRandom,
         plantDelaySeconds: Math.max(0, Math.min(60, Number(cfg.plantDelaySeconds) || 0)),
+        fertilizerBuyType: cfg.fertilizerBuyType || 'organic',
+        fertilizerBuyCount: Math.max(0, Math.min(10000, Number(cfg.fertilizerBuyCount) || 0)),
         ui: { ...globalConfig.ui },
     };
 }
@@ -523,6 +540,17 @@ function applyConfigSnapshot(snapshot, options = {}) {
     // 种植延迟
     if (cfg.plantDelaySeconds !== undefined && cfg.plantDelaySeconds !== null) {
         next.plantDelaySeconds = Math.max(0, Math.min(60, Number(cfg.plantDelaySeconds) || 0));
+    }
+
+    // 化肥购买类型
+    if (cfg.fertilizerBuyType !== undefined && cfg.fertilizerBuyType !== null) {
+        const allowedTypes = ['organic', 'inorganic'];
+        next.fertilizerBuyType = allowedTypes.includes(cfg.fertilizerBuyType) ? cfg.fertilizerBuyType : 'organic';
+    }
+
+    // 化肥购买数量
+    if (cfg.fertilizerBuyCount !== undefined && cfg.fertilizerBuyCount !== null) {
+        next.fertilizerBuyCount = Math.max(0, Math.min(10000, Number(cfg.fertilizerBuyCount) || 0));
     }
 
     if (cfg.ui && typeof cfg.ui === 'object') {
@@ -625,6 +653,18 @@ function getPlantOrderRandom(accountId) {
 // ============ 种植延迟 ============
 function getPlantDelaySeconds(accountId) {
     return Math.max(0, Math.min(60, Number(getAccountConfigSnapshot(accountId).plantDelaySeconds) || 0));
+}
+
+// ============ 化肥购买类型 ============
+function getFertilizerBuyType(accountId) {
+    const cfg = getAccountConfigSnapshot(accountId);
+    const allowedTypes = ['organic', 'inorganic'];
+    return allowedTypes.includes(cfg.fertilizerBuyType) ? cfg.fertilizerBuyType : 'organic';
+}
+
+// ============ 化肥购买数量 ============
+function getFertilizerBuyCount(accountId) {
+    return Math.max(0, Math.min(10000, Number(getAccountConfigSnapshot(accountId).fertilizerBuyCount) || 0));
 }
 
 // ============ 蔬菜黑名单 ============
@@ -854,6 +894,8 @@ module.exports = {
     getStealDelaySeconds,
     getPlantOrderRandom,
     getPlantDelaySeconds,
+    getFertilizerBuyType,
+    getFertilizerBuyCount,
     getUI,
     setUITheme,
     getOfflineReminder,

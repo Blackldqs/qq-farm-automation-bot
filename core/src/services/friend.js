@@ -439,9 +439,10 @@ function analyzeFriendLands(lands, myGid, friendName = '', options = {}) {
 
                 // 蔬菜黑名单过滤 - 使用seedId检查
                 if (plantBlacklist && seedId > 0 && plantBlacklist.includes(seedId)) {
-                    log('好友', `${friendName} 土地#${id}: ${plantName}(${plantId},种子${seedId}) 被蔬菜黑名单过滤跳过`, {
-                        module: 'friend', event: '蔬菜黑名单跳过', friendName, landId: id, plantId, seedId, plantName
-                    });
+                    // log('好友', `${friendName} 土地#${id}: ${plantName}(${plantId},种子${seedId}) 被蔬菜黑名单过滤跳过`,
+                    //     {
+                    //     module: 'friend', event: '蔬菜黑名单跳过', friendName, landId: id, plantId, seedId, plantName
+                    // });
                     continue;
                 }
                 result.stealable.push(id);

@@ -1065,12 +1065,14 @@ function startAdminServer(dataProvider) {
             const stealDelaySeconds = (typeof store.getStealDelaySeconds === 'function') ? store.getStealDelaySeconds(id) : 0;
             const plantOrderRandom = (typeof store.getPlantOrderRandom === 'function') ? store.getPlantOrderRandom(id) : false;
             const plantDelaySeconds = (typeof store.getPlantDelaySeconds === 'function') ? store.getPlantDelaySeconds(id) : 0;
+            const fertilizerBuyType = (typeof store.getFertilizerBuyType === 'function') ? store.getFertilizerBuyType(id) : 'organic';
+            const fertilizerBuyCount = (typeof store.getFertilizerBuyCount === 'function') ? store.getFertilizerBuyCount(id) : 0;
             const ui = store.getUI();
             // 获取用户隔离的下线提醒配置
             const offlineReminder = store.getOfflineReminder && currentUser
                 ? store.getOfflineReminder(currentUser.username)
                 : { channel: 'webhook', reloginUrlMode: 'none', endpoint: '', token: '', title: '账号下线提醒', msg: '账号下线', offlineDeleteSec: 0 };
-            res.json({ ok: true, data: { intervals, strategy, preferredSeed, friendQuietHours, automation, stealDelaySeconds, plantOrderRandom, plantDelaySeconds, ui, offlineReminder } });
+            res.json({ ok: true, data: { intervals, strategy, preferredSeed, friendQuietHours, automation, stealDelaySeconds, plantOrderRandom, plantDelaySeconds, fertilizerBuyType, fertilizerBuyCount, ui, offlineReminder } });
         } catch (e) {
             res.status(500).json({ ok: false, error: e.message });
         }

@@ -60,6 +60,8 @@ export interface SettingsState {
   stealDelaySeconds: number
   plantOrderRandom: boolean
   plantDelaySeconds: number
+  fertilizerBuyType: string
+  fertilizerBuyCount: number
 }
 
 export const useSettingStore = defineStore('setting', () => {
@@ -82,6 +84,8 @@ export const useSettingStore = defineStore('setting', () => {
     stealDelaySeconds: 0,
     plantOrderRandom: false,
     plantDelaySeconds: 0,
+    fertilizerBuyType: 'organic',
+    fertilizerBuyCount: 0,
   })
   const loading = ref(false)
 
@@ -113,6 +117,8 @@ export const useSettingStore = defineStore('setting', () => {
         settings.value.stealDelaySeconds = d.stealDelaySeconds ?? 0
         settings.value.plantOrderRandom = d.plantOrderRandom ?? false
         settings.value.plantDelaySeconds = d.plantDelaySeconds ?? 0
+        settings.value.fertilizerBuyType = d.fertilizerBuyType ?? 'organic'
+        settings.value.fertilizerBuyCount = d.fertilizerBuyCount ?? 0
       }
     }
     finally {
@@ -133,6 +139,8 @@ export const useSettingStore = defineStore('setting', () => {
         stealDelaySeconds: newSettings.stealDelaySeconds ?? 0,
         plantOrderRandom: newSettings.plantOrderRandom ?? false,
         plantDelaySeconds: newSettings.plantDelaySeconds ?? 0,
+        fertilizerBuyType: newSettings.fertilizerBuyType ?? 'organic',
+        fertilizerBuyCount: newSettings.fertilizerBuyCount ?? 0,
       }
 
       await api.post('/api/settings/save', settingsPayload, {

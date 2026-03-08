@@ -9,6 +9,7 @@ const { types } = require('../utils/proto');
 const { toNum, log, sleep } = require('../utils/utils');
 
 const ORGANIC_FERTILIZER_MALL_GOODS_ID = 1002;
+const INORGANIC_FERTILIZER_MALL_GOODS_ID = 1001;
 const BUY_COOLDOWN_MS = 10 * 60 * 1000;
 const MAX_ROUNDS = 100;
 const BUY_PER_ROUND = 10;
@@ -92,6 +93,18 @@ function findOrganicFertilizerMallGoods(goodsList) {
     return list.find((g) => toNum(g && g.goods_id) === ORGANIC_FERTILIZER_MALL_GOODS_ID) || null;
 }
 
+function findInorganicFertilizerMallGoods(goodsList) {
+    const list = Array.isArray(goodsList) ? goodsList : [];
+    return list.find((g) => toNum(g && g.goods_id) === INORGANIC_FERTILIZER_MALL_GOODS_ID) || null;
+}
+
+function findFertilizerMallGoods(goodsList, type = 'organic') {
+    if (type === 'inorganic') {
+        return findInorganicFertilizerMallGoods(goodsList);
+    }
+    return findOrganicFertilizerMallGoods(goodsList);
+}
+
 async function autoBuyOrganicFertilizerViaMall() {
     const goodsList = await getMallGoodsList(1);
     const goods = findOrganicFertilizerMallGoods(goodsList);
@@ -135,13 +148,59 @@ async function autoBuyOrganicFertilizerViaMall() {
     return totalBought;
 }
 
+async function autoBuyFertilizerViaMall(type = 'organic', targetCount = 0) {
+    const goodsList = await getMallGoodsList(1);
+    const goods = findFertilizerMallGoods(goodsList, type);
+    if (!goods) return 0;
+
+    const goodsId = toNum(goods.goods_id);
+    if (goodsId <= 0) return 0;
+    const singlePrice = parseMallPriceValue(goods.price);
+    let ticket = Math.max(0, toNum((getUserState() || {}).ticket));
+    let totalBought = 0;
+    let perRound = BUY_PER_ROUND;
+    if (singlePrice > 0 && ticket > 0) {
+        perRound = Math.max(1, Math.min(BUY_PER_ROUND, Math.floor(ticket / singlePrice) || 1));
+    }
+
+    const remainingToBuy = targetCount > 0 ? targetCount : Infinity;
+
+    for (let i = 0; i < MAX_ROUNDS; i++) {
+        if (targetCount > 0 && totalBought >= remainingToBuy) break;
+        if (singlePrice > 0 && ticket > 0 && ticket < singlePrice) {
+            buyPausedNoGoldDateKey = getDateKey();
+            break;
+        }
+        const buyCount = targetCount > 0 ? Math.min(perRound, remainingToBuy - totalBought) : perRound;
+        try {
+            await purchaseMallGoods(goodsId, buyCount);
+            totalBought += buyCount;
+            if (singlePrice > 0 && ticket > 0) {
+                ticket = Math.max(0, ticket - (singlePrice * buyCount));
+                if (ticket < singlePrice) break;
+            }
+            await sleep(120);
+        } catch (e) {
+            const msg = String((e && e.message) || '');
+            if (msg.includes('余额不足') || msg.includes('点券不足') || msg.includes('code=1000019')) {
+                if (perRound > 1) {
+                    perRound = 1;
+                    continue;
+                }
+                buyPausedNoGoldDateKey = getDateKey();
+            }
+            break;
+        }
+    }
+    return totalBought;
+}
+
 async function autoBuyOrganicFertilizer(force = false) {
     const now = Date.now();
     if (!force && now - lastBuyAt < BUY_COOLDOWN_MS) return 0;
     lastBuyAt = now;
 
     try {
-        // 使用 MallService 购买链路（点券）
         const totalBought = await autoBuyOrganicFertilizerViaMall();
         if (totalBought > 0) {
             buyDoneDateKey = getDateKey();
@@ -151,6 +210,31 @@ async function autoBuyOrganicFertilizer(force = false) {
                 event: '购买化肥',
                 result: 'ok',
                 count: totalBought,
+            });
+        }
+        return totalBought;
+    } catch {
+        return 0;
+    }
+}
+
+async function autoBuyFertilizer(force = false, type = 'organic', targetCount = 0) {
+    const now = Date.now();
+    if (!force && now - lastBuyAt < BUY_COOLDOWN_MS) return 0;
+    lastBuyAt = now;
+
+    try {
+        const totalBought = await autoBuyFertilizerViaMall(type, targetCount);
+        if (totalBought > 0) {
+            buyDoneDateKey = getDateKey();
+            buyLastSuccessAt = Date.now();
+            const typeName = type === 'inorganic' ? '无机化肥' : '有机化肥';
+            log('商城', `自动购买${typeName} x${totalBought}`, {
+                module: 'warehouse',
+                event: '购买化肥',
+                result: 'ok',
+                count: totalBought,
+                type,
             });
         }
         return totalBought;
@@ -229,6 +313,7 @@ async function buyFreeGifts(force = false) {
 
 module.exports = {
     autoBuyOrganicFertilizer,
+    autoBuyFertilizer,
     buyFreeGifts,
     getFertilizerBuyDailyState: () => ({
         key: 'fertilizer_buy',

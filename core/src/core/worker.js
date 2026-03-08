@@ -5,13 +5,13 @@ const process = require('node:process');
 const { parentPort, workerData } = require('node:worker_threads');
 const { CONFIG } = require('../config/config');
 const { getLevelExpProgress } = require('../config/gameConfig');
-const { getAutomation, getPreferredSeed, getConfigSnapshot, applyConfigSnapshot } = require('../models/store');
+const { getAutomation, getPreferredSeed, getConfigSnapshot, applyConfigSnapshot, getFertilizerBuyType, getFertilizerBuyCount } = require('../models/store');
 const { checkAndClaimEmails } = require('../services/email');
 const { getEmailDailyState } = require('../services/email');
 const { checkFarm, startFarmCheckLoop, stopFarmCheckLoop, refreshFarmCheckLoop, getLandsDetail, getAvailableSeeds, runFarmOperation, runFertilizerByConfig } = require('../services/farm');
 const { checkFriends, startFriendCheckLoop, stopFriendCheckLoop, refreshFriendCheckLoop, runBadOnceOnStartup, isHelpExpLimitReached, getFriendsList, getFriendLandsDetail, doFriendOperation } = require('../services/friend');
 const { processInviteCodes } = require('../services/invite');
-const { autoBuyOrganicFertilizer, buyFreeGifts, getFreeGiftDailyState } = require('../services/mall');
+const { autoBuyOrganicFertilizer, autoBuyFertilizer, buyFreeGifts, getFreeGiftDailyState } = require('../services/mall');
 const { performDailyMonthCardGift, getMonthCardDailyState } = require('../services/monthcard');
 const { performDailyOpenServerGift, getOpenServerDailyState } = require('../services/openserver');
 const { performDailyVipGift, getVipDailyState } = require('../services/qqvip');
@@ -226,7 +226,11 @@ async function runFarmTick(auto) {
         if (auto.task) await checkAndClaimTasks();
         if (auto.email) await checkAndClaimEmails();
         if (auto.fertilizer_gift) await openFertilizerGiftPacksSilently();
-        if (auto.fertilizer_buy) await autoBuyOrganicFertilizer();
+        if (auto.fertilizer_buy) {
+            const fertilizerType = getFertilizerBuyType();
+            const fertilizerCount = getFertilizerBuyCount();
+            await autoBuyFertilizer(false, fertilizerType, fertilizerCount);
+        }
     } catch {
         // ignore
     } finally {

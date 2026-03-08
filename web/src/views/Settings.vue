@@ -74,6 +74,8 @@ const localSettings = ref({
     fertilizer: 'normal',
     skip_own_weed_bug: false,
   },
+  fertilizerBuyType: 'organic',
+  fertilizerBuyCount: 0,
 })
 
 const localOffline = ref({
@@ -103,6 +105,8 @@ function syncLocalSettings() {
       intervals: settings.value.intervals,
       friendQuietHours: settings.value.friendQuietHours,
       automation: settings.value.automation,
+      fertilizerBuyType: settings.value.fertilizerBuyType ?? 'organic',
+      fertilizerBuyCount: settings.value.fertilizerBuyCount ?? 0,
     }))
 
     if (!localSettings.value.automation) {
@@ -174,6 +178,11 @@ const fertilizerOptions = [
   { label: '仅普通化肥', value: 'normal' },
   { label: '仅有机化肥', value: 'organic' },
   { label: '不施肥', value: 'none' },
+]
+
+const fertilizerBuyTypeOptions = [
+  { label: '有机化肥', value: 'organic' },
+  { label: '无机化肥', value: 'inorganic' },
 ]
 
 const plantingStrategyOptions = [
@@ -580,6 +589,21 @@ async function handleTestOffline() {
             <BaseSwitch v-model="localSettings.automation.fertilizer_gift" label="自动填充化肥" />
             <BaseSwitch v-model="localSettings.automation.fertilizer_buy" label="自动购买化肥" />
             <BaseSwitch v-model="localSettings.automation.skip_own_weed_bug" label="不除自己草虫" />
+          </div>
+
+          <div v-if="localSettings.automation.fertilizer_buy" class="flex flex-wrap gap-4 rounded bg-green-50 p-2 text-sm dark:bg-green-900/20">
+            <BaseSelect
+              v-model="localSettings.fertilizerBuyType"
+              label="化肥类型"
+              :options="fertilizerBuyTypeOptions"
+            />
+            <BaseInput
+              v-model.number="localSettings.fertilizerBuyCount"
+              label="购买数量 (0=不限)"
+              type="number"
+              min="0"
+              max="10000"
+            />
           </div>
 
           <div v-if="localSettings.automation.friend" class="flex flex-wrap gap-4 rounded bg-blue-50 p-2 text-sm dark:bg-blue-900/20">

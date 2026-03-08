@@ -12,6 +12,7 @@ const { updateStatusFromLogin, updateStatusGold, updateStatusLevel } = require('
 const { recordOperation } = require('../services/stats');
 const { types } = require('./proto');
 const { toLong, toNum, syncServerTime, log, logWarn } = require('./utils');
+const cryptoWasm = require('./crypto-wasm');
 
 // ============ 事件发射器 (用于推送通知) ============
 const networkEvents = new EventEmitter();
@@ -47,7 +48,11 @@ function hasOwn(obj, key) {
 }
 
 // ============ 消息编解码 ============
-function encodeMsg(serviceName, methodName, bodyBytes) {
+async function encodeMsg(serviceName, methodName, bodyBytes) {
+    let finalBody = bodyBytes || Buffer.alloc(0);
+    if (finalBody.length > 0) {
+        finalBody = await cryptoWasm.encryptBuffer(finalBody);
+    }
     const msg = types.GateMessage.create({
         meta: {
             service_name: serviceName,
@@ -56,20 +61,20 @@ function encodeMsg(serviceName, methodName, bodyBytes) {
             client_seq: toLong(clientSeq),
             server_seq: toLong(serverSeq),
         },
-        body: bodyBytes || Buffer.alloc(0),
+        body: finalBody,
     });
     const encoded = types.GateMessage.encode(msg).finish();
     clientSeq++;
     return encoded;
 }
 
-function sendMsg(serviceName, methodName, bodyBytes, callback) {
+async function sendMsg(serviceName, methodName, bodyBytes, callback) {
     if (!ws || ws.readyState !== WebSocket.OPEN) {
         log('系统', '[WS] 连接未打开');
         return false;
     }
     const seq = clientSeq;
-    const encoded = encodeMsg(serviceName, methodName, bodyBytes);
+    const encoded = await encodeMsg(serviceName, methodName, bodyBytes);
     if (callback) pendingCallbacks.set(seq, callback);
     ws.send(encoded);
     return true;
@@ -327,7 +332,7 @@ function handleNotify(msg) {
 }
 
 // ============ 登录 ============
-function sendLogin(onLoginSuccess) {
+async function sendLogin(onLoginSuccess) {
     const body = types.LoginRequest.encode(types.LoginRequest.create({
         sharer_id: toLong(0),
         sharer_open_id: '',
@@ -346,7 +351,7 @@ function sendLogin(onLoginSuccess) {
         },
     })).finish();
 
-    sendMsg('gamepb.userpb.UserService', 'Login', body, (err, bodyBytes, _meta) => {
+    await sendMsg('gamepb.userpb.UserService', 'Login', body, (err, bodyBytes, _meta) => {
         if (err) {
             log('登录', `失败: ${err.message}`);
             // 如果是验证失败，直接退出进程
@@ -434,15 +439,14 @@ function startHeartbeat() {
             gid: toLong(userState.gid),
             client_version: CONFIG.clientVersion,
         })).finish();
-        sendMsg('gamepb.userpb.UserService', 'Heartbeat', body, (err, replyBody) => {
-            if (err || !replyBody) return;
+        sendMsgAsync('gamepb.userpb.UserService', 'Heartbeat', body).then(({ body: replyBody }) => {
             lastHeartbeatResponse = Date.now();
             heartbeatMissCount = 0;
             try {
                 const reply = types.HeartbeatReply.decode(replyBody);
                 if (reply.server_time) syncServerTime(toNum(reply.server_time));
             } catch { }
-        });
+        }).catch(() => { });
     });
 }
 
