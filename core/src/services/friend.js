@@ -862,7 +862,8 @@ async function getFriendsList() {
         const friends = reply.game_friends || [];
         const state = getUserState();
         const result = friends
-            .filter(f => toNum(f.gid) !== state.gid && f.name !== '小小农夫' && f.remark !== '小小农夫')
+            // 面板好友列表不做特定昵称/备注的隐藏过滤（例如“小小农夫”），仅排除自身
+            .filter(f => toNum(f.gid) !== state.gid)
             .map(f => ({
                 gid: toNum(f.gid),
                 name: f.remark || f.name || `GID:${toNum(f.gid)}`,
