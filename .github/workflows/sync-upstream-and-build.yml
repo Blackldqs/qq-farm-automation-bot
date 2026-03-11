@@ -1,14 +1,14 @@
-name: Sync upstream hourly and build Docker
+name: Sync upstream every 6 hours and build Docker
 
 on:
   schedule:
-    # 每小时整点跑一次
-    - cron: "0 * * * *"
+    # 每 6 小时整点跑一次
+    - cron: "0 */6 * * *"
   workflow_dispatch:
 
 # 避免上一次还没跑完又开始下一次
 concurrency:
-  group: sync-upstream-hourly
+  group: sync-upstream-6hourly
   cancel-in-progress: false
 
 permissions:
