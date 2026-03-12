@@ -606,7 +606,7 @@ async function handleApiCall(msg) {
                 result = await getLandsDetail();
                 break;
             case 'getFriends':
-                result = await getFriendsList();
+                result = await getFriendsList(args[0] === true);
                 break;
             case 'getInteractRecords':
                 result = await getInteractRecords();
@@ -625,6 +625,9 @@ async function handleApiCall(msg) {
                 break;
             case 'getBag':
                 result = await require('../services/warehouse').getBagDetail();
+                break;
+            case 'getBagSeeds':
+                result = await require('../services/warehouse').getBagSeeds();
                 break;
             case 'useItem': {
                 const { useItem: _useItem } = require('../services/warehouse');

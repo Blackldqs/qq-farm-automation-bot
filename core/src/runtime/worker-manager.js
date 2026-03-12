@@ -80,6 +80,7 @@ function createWorkerManager(options) {
             requests: new Map(), // pending API requests
             reqId: 1,
             name: account.name,
+            username: account.username || '', // 保存用户名用于下线提醒
             stopping: false,
             disconnectedSince: 0,
             autoDeleteTriggered: false,
@@ -230,7 +231,7 @@ function createWorkerManager(options) {
                 const now = Date.now();
                 if (!worker.disconnectedSince) worker.disconnectedSince = now;
                 const offlineMs = now - worker.disconnectedSince;
-                const autoDeleteMs = getOfflineAutoDeleteMs();
+                const autoDeleteMs = getOfflineAutoDeleteMs(worker.username);
                 if (!worker.autoDeleteTriggered && offlineMs >= autoDeleteMs) {
                     worker.autoDeleteTriggered = true;
                     const offlineMin = Math.floor(offlineMs / 60000);
@@ -238,6 +239,7 @@ function createWorkerManager(options) {
                     triggerOfflineReminder({
                         accountId,
                         accountName: worker.name,
+                        username: worker.username,
                         reason: 'offline_timeout',
                         offlineMs,
                     });
@@ -306,6 +308,24 @@ function createWorkerManager(options) {
                 if (error) req.reject(new Error(error));
                 else req.resolve(result);
                 worker.requests.delete(id);
+            }
+        } else if (msg.type === 'friend_blacklist_add') {
+            const gid = Number(msg.gid) || 0;
+            if (gid > 0) {
+                const { addFriendToBlacklist: addToBlacklist } = require('../models/store');
+                addToBlacklist(accountId, gid);
+                log('好友', `已将好友 ${msg.friendName || `GID:${gid}`} 加入黑名单`, {
+                    accountId: String(accountId),
+                    accountName: worker.name,
+                    friendGid: gid,
+                    friendName: msg.friendName,
+                    reason: msg.reason,
+                });
+                // 同步配置到 worker 进程
+                const worker_process = workers[accountId];
+                if (worker_process && worker_process.process) {
+                    worker_process.process.send({ type: 'config_sync', config: buildConfigSnapshotForAccount(accountId) });
+                }
             }
         }
     }

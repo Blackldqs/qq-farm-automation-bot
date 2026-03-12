@@ -8,7 +8,8 @@ const { readTextFile, readJsonFile, writeJsonFileAtomic } = require('../services
 
 const STORE_FILE = getDataFile('store.json');
 const ACCOUNTS_FILE = getDataFile('accounts.json');
-const ALLOWED_PLANTING_STRATEGIES = ['preferred', 'level', 'max_exp', 'max_fert_exp', 'max_profit', 'max_fert_profit'];
+const ALLOWED_PLANTING_STRATEGIES = ['preferred', 'level', 'max_exp', 'max_fert_exp', 'max_profit', 'max_fert_profit', 'bag_priority'];
+const ALLOWED_BAG_SEED_FALLBACK_STRATEGIES = ALLOWED_PLANTING_STRATEGIES.filter(s => s !== 'bag_priority');
 const PUSHOO_CHANNELS = new Set([
     'webhook', 'qmsg', 'serverchan', 'pushplus', 'pushplushxtrip',
     'dingtalk', 'wecom', 'bark', 'gocqhttp', 'onebot', 'atri',
@@ -19,7 +20,7 @@ const PUSHOO_CHANNELS = new Set([
 const DEFAULT_FERTILIZER_LAND_TYPES = ['gold', 'black', 'red', 'normal'];
 const FERTILIZER_LAND_TYPE_SET = new Set(DEFAULT_FERTILIZER_LAND_TYPES);
 const INTERVAL_MAX_SEC = 86400;
-const DEFAULT_KNOWN_FRIEND_GID_SYNC_COOLDOWN_SEC = 600;
+const DEFAULT_KNOWN_FRIEND_GID_SYNC_COOLDOWN_SEC = 300;
 
 function normalizeKnownFriendGids(input, fallback = []) {
     const source = Array.isArray(input) ? input : fallback;
@@ -38,6 +39,25 @@ function normalizeKnownFriendGidSyncCooldownSec(input, fallback = DEFAULT_KNOWN_
     const base = Number.isFinite(value) ? value : fallback;
     return Math.max(30, Math.min(INTERVAL_MAX_SEC, base));
 }
+
+function normalizeBagSeedPriority(input) {
+    if (!Array.isArray(input)) return [];
+    const normalized = [];
+    for (const item of input) {
+        const value = Number.parseInt(item, 10);
+        if (!Number.isFinite(value) || value <= 0) continue;
+        if (normalized.includes(value)) continue;
+        normalized.push(value);
+    }
+    return normalized;
+}
+
+function normalizeBagSeedFallbackStrategy(input, fallback = 'level') {
+    const strategy = String(input || '').trim();
+    if (ALLOWED_BAG_SEED_FALLBACK_STRATEGIES.includes(strategy)) return strategy;
+    return fallback;
+}
+
 const DEFAULT_OFFLINE_REMINDER = {
     channel: 'webhook',
     reloginUrlMode: 'none',
@@ -115,6 +135,10 @@ const DEFAULT_ACCOUNT_CONFIG = {
     fertilizerBuyType: 'normal',
     // 化肥购买数量（0=不限制，购买到点券不足为止）
     fertilizerBuyCount: 10,
+    // 背包种子优先顺序（seedId 数组）
+    bagSeedPriority: [],
+    // 背包种子用完后的回退策略
+    bagSeedFallbackStrategy: 'level',
 };
 const ALLOWED_AUTOMATION_KEYS = new Set(Object.keys(DEFAULT_ACCOUNT_CONFIG.automation));
 
@@ -249,6 +273,8 @@ function cloneAccountConfig(base = DEFAULT_ACCOUNT_CONFIG) {
         plantDelaySeconds: Math.max(0, Math.min(60, Number(base.plantDelaySeconds) || 0)),
         fertilizerBuyType,
         fertilizerBuyCount: Math.max(0, Math.min(10000, Number(base.fertilizerBuyCount) || 0)),
+        bagSeedPriority: normalizeBagSeedPriority(base.bagSeedPriority),
+        bagSeedFallbackStrategy: normalizeBagSeedFallbackStrategy(base.bagSeedFallbackStrategy),
     };
 }
 
@@ -350,6 +376,16 @@ function normalizeAccountConfig(input, fallback = accountFallbackConfig) {
     // 化肥购买数量
     if (src.fertilizerBuyCount !== undefined && src.fertilizerBuyCount !== null) {
         cfg.fertilizerBuyCount = Math.max(0, Math.min(10000, Number(src.fertilizerBuyCount) || 0));
+    }
+
+    // 背包种子优先顺序
+    if (src.bagSeedPriority !== undefined && src.bagSeedPriority !== null) {
+        cfg.bagSeedPriority = normalizeBagSeedPriority(src.bagSeedPriority);
+    }
+
+    // 背包种子回退策略
+    if (src.bagSeedFallbackStrategy !== undefined && src.bagSeedFallbackStrategy !== null) {
+        cfg.bagSeedFallbackStrategy = normalizeBagSeedFallbackStrategy(src.bagSeedFallbackStrategy);
     }
 
     return cfg;
@@ -647,6 +683,16 @@ function applyConfigSnapshot(snapshot, options = {}) {
         next.fertilizerBuyCount = Math.max(0, Math.min(10000, Number(cfg.fertilizerBuyCount) || 0));
     }
 
+    // 背包种子优先顺序
+    if (cfg.bagSeedPriority !== undefined && cfg.bagSeedPriority !== null) {
+        next.bagSeedPriority = normalizeBagSeedPriority(cfg.bagSeedPriority);
+    }
+
+    // 背包种子回退策略
+    if (cfg.bagSeedFallbackStrategy !== undefined && cfg.bagSeedFallbackStrategy !== null) {
+        next.bagSeedFallbackStrategy = normalizeBagSeedFallbackStrategy(cfg.bagSeedFallbackStrategy);
+    }
+
     if (cfg.ui && typeof cfg.ui === 'object') {
         const theme = String(cfg.ui.theme || '').toLowerCase();
         if (theme === 'dark' || theme === 'light') {
@@ -673,6 +719,14 @@ function getPreferredSeed(accountId) {
 
 function getPlantingStrategy(accountId) {
     return getAccountConfigSnapshot(accountId).plantingStrategy;
+}
+
+function getBagSeedPriority(accountId) {
+    return [...(getAccountConfigSnapshot(accountId).bagSeedPriority || [])];
+}
+
+function getBagSeedFallbackStrategy(accountId) {
+    return normalizeBagSeedFallbackStrategy(getAccountConfigSnapshot(accountId).bagSeedFallbackStrategy);
 }
 
 function getIntervals(accountId) {
@@ -759,6 +813,16 @@ function setFriendBlacklist(accountId, list) {
     next.friendBlacklist = Array.isArray(list) ? list.map(Number).filter(n => Number.isFinite(n) && n > 0) : [];
     setAccountConfigSnapshot(accountId, next);
     return [...next.friendBlacklist];
+}
+
+function addFriendToBlacklist(accountId, gid) {
+    const gidNum = Number(gid);
+    if (!gidNum || gidNum <= 0) return false;
+    const current = getFriendBlacklist(accountId);
+    if (current.includes(gidNum)) return false;
+    const newList = [...current, gidNum];
+    setFriendBlacklist(accountId, newList);
+    return true;
 }
 
 // ============ 偷取延迟 ============
@@ -1008,6 +1072,8 @@ module.exports = {
     isAutomationOn,
     getPreferredSeed,
     getPlantingStrategy,
+    getBagSeedPriority,
+    getBagSeedFallbackStrategy,
     getIntervals,
     getFriendQuietHours,
     getKnownFriendGids,
@@ -1016,6 +1082,7 @@ module.exports = {
     setKnownFriendGidSyncCooldownSec,
     getFriendBlacklist,
     setFriendBlacklist,
+    addFriendToBlacklist,
     getStealDelaySeconds,
     getPlantOrderRandom,
     getPlantDelaySeconds,

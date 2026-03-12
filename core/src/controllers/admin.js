@@ -604,8 +604,10 @@ function startAdminServer(dataProvider) {
             return res.status(403).json({ ok: false, error: '无权访问此账号' });
         }
 
+        const forceSync = req.query.forceSync === 'true';
+
         try {
-            const data = await provider.getFriends(id);
+            const data = await provider.getFriends(id, forceSync);
             res.json({ ok: true, data });
         } catch (e) {
             handleApiError(res, e);
@@ -888,6 +890,41 @@ function startAdminServer(dataProvider) {
         }
     });
 
+    // 批量删除未同步的好友GID
+    app.post('/api/friend-known-gids/batch-remove', (req, res) => {
+        const id = getAccId(req);
+        if (!id) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+
+        // 检查权限
+        if (!checkAccountAccess(req, id)) {
+            return res.status(403).json({ ok: false, error: '无权访问此账号' });
+        }
+
+        const gids = (req.body || {}).gids;
+        if (!Array.isArray(gids) || gids.length === 0) {
+            return res.json({ ok: true, data: buildKnownFriendGidSettings(id), removedCount: 0 });
+        }
+
+        try {
+            const current = store.getKnownFriendGids ? store.getKnownFriendGids(id) : [];
+            const removeSet = new Set(gids.map(Number).filter(n => Number.isFinite(n) && n > 0));
+            const next = current.filter(gid => !removeSet.has(Number(gid)));
+            const removedCount = current.length - next.length;
+
+            if (removedCount > 0 && store.setKnownFriendGids) {
+                store.setKnownFriendGids(id, next);
+            }
+
+            return res.json({ 
+                ok: true, 
+                data: buildKnownFriendGidSettings(id),
+                removedCount,
+            });
+        } catch (e) {
+            return handleApiError(res, e);
+        }
+    });
+
     // API: 蔬菜黑名单
     app.get('/api/plant-blacklist', authRequired, (req, res) => {
         try {
@@ -1042,6 +1079,24 @@ function startAdminServer(dataProvider) {
                 return res.status(400).json({ ok: false, error: '缺少出售物品列表' });
             }
             const data = await provider.sellItems(id, items);
+            res.json({ ok: true, data });
+        } catch (e) {
+            handleApiError(res, e);
+        }
+    });
+
+    // API: 获取背包种子列表
+    app.get('/api/bag/seeds', async (req, res) => {
+        const id = getAccId(req);
+        if (!id) return res.status(400).json({ ok: false, error: 'Missing x-account-id' });
+
+        // 检查权限
+        if (!checkAccountAccess(req, id)) {
+            return res.status(403).json({ ok: false, error: '无权访问此账号' });
+        }
+
+        try {
+            const data = await provider.getBagSeeds(id);
             res.json({ ok: true, data });
         } catch (e) {
             handleApiError(res, e);
@@ -1264,12 +1319,14 @@ function startAdminServer(dataProvider) {
             const plantDelaySeconds = (typeof store.getPlantDelaySeconds === 'function') ? store.getPlantDelaySeconds(id) : 0;
             const fertilizerBuyType = (typeof store.getFertilizerBuyType === 'function') ? store.getFertilizerBuyType(id) : 'organic';
             const fertilizerBuyCount = (typeof store.getFertilizerBuyCount === 'function') ? store.getFertilizerBuyCount(id) : 0;
+            const bagSeedPriority = (typeof store.getBagSeedPriority === 'function') ? store.getBagSeedPriority(id) : [];
+            const bagSeedFallbackStrategy = (typeof store.getBagSeedFallbackStrategy === 'function') ? store.getBagSeedFallbackStrategy(id) : 'level';
             const ui = store.getUI();
             // 获取用户隔离的下线提醒配置
             const offlineReminder = store.getOfflineReminder && currentUser
                 ? store.getOfflineReminder(currentUser.username)
                 : { channel: 'webhook', reloginUrlMode: 'none', endpoint: '', token: '', title: '账号下线提醒', msg: '账号下线', offlineDeleteSec: 0 };
-            res.json({ ok: true, data: { intervals, strategy, preferredSeed, friendQuietHours, automation, stealDelaySeconds, plantOrderRandom, plantDelaySeconds, fertilizerBuyType, fertilizerBuyCount, ui, offlineReminder } });
+            res.json({ ok: true, data: { intervals, strategy, preferredSeed, friendQuietHours, automation, stealDelaySeconds, plantOrderRandom, plantDelaySeconds, fertilizerBuyType, fertilizerBuyCount, bagSeedPriority, bagSeedFallbackStrategy, ui, offlineReminder } });
         } catch (e) {
             res.status(500).json({ ok: false, error: e.message });
         }
@@ -2078,7 +2135,7 @@ function startAdminServer(dataProvider) {
         }
     };
 
-    const port = CONFIG.adminPort || 3000;
+    const port = CONFIG.adminPort || 3007;
     server = app.listen(port, '0.0.0.0', () => {
         adminLogger.info('admin panel started', { url: `http://localhost:${port}`, port });
     });
