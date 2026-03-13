@@ -37,6 +37,9 @@ jobs:
 
           repo="$GITHUB_REPOSITORY"
 
+          # 目标上游仓库（固定为指定仓库，而不是依赖 fork.parent）
+          upstream_full="XyhTender/qq-farm-automation-bot"
+
           # 读取 fork 的上游仓库信息（如果不是 fork，就直接退出）
           parent_full="$(gh api "repos/$repo" --jq '.parent.full_name // empty')"
           if [ -z "$parent_full" ]; then
@@ -48,15 +51,19 @@ jobs:
 
           branch="$(gh api "repos/$repo" --jq '.default_branch')"
           fork_owner="${repo%%/*}"
-          upstream_owner="${parent_full%%/*}"
 
-          echo "Upstream: $parent_full"
-          echo "Branch: $branch"
+          # 使用上游默认分支（避免假设与 fork 默认分支同名）
+          upstream_branch="$(gh api "repos/$upstream_full" --jq '.default_branch')"
+          upstream_owner="${upstream_full%%/*}"
+
+          echo "Upstream: $upstream_full"
+          echo "Fork branch: $branch"
+          echo "Upstream branch: $upstream_branch"
 
           # 对比 fork 分支与 upstream 分支：
           # base = fork_owner:branch
-          # head = upstream_owner:branch
-          compare_url="repos/$parent_full/compare/$fork_owner:$branch...$upstream_owner:$branch"
+          # head = upstream_owner:upstream_branch
+          compare_url="repos/$upstream_full/compare/$fork_owner:$branch...$upstream_owner:$upstream_branch"
           status="$(gh api "$compare_url" --jq '.status')"
           ahead_by="$(gh api "$compare_url" --jq '.ahead_by')"
 
