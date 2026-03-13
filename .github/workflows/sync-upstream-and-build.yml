@@ -40,47 +40,50 @@ jobs:
           # 目标上游仓库（固定为指定仓库，而不是依赖 fork.parent）
           upstream_full="XyhTender/qq-farm-automation-bot"
 
-          # 读取 fork 的上游仓库信息（如果不是 fork，就直接退出）
-          parent_full="$(gh api "repos/$repo" --jq '.parent.full_name // empty')"
-          if [ -z "$parent_full" ]; then
-            echo "This repository is not a fork; skip sync."
-            echo "updated=false" >> "$GITHUB_OUTPUT"
-            echo "branch=" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
           branch="$(gh api "repos/$repo" --jq '.default_branch')"
-          fork_owner="${repo%%/*}"
 
           # 使用上游默认分支（避免假设与 fork 默认分支同名）
           upstream_branch="$(gh api "repos/$upstream_full" --jq '.default_branch')"
-          upstream_owner="${upstream_full%%/*}"
 
           echo "Upstream: $upstream_full"
-          echo "Fork branch: $branch"
+          echo "Target branch: $branch"
           echo "Upstream branch: $upstream_branch"
 
-          # 对比 fork 分支与 upstream 分支：
-          # base = fork_owner:branch
-          # head = upstream_owner:upstream_branch
-          compare_url="repos/$upstream_full/compare/$fork_owner:$branch...$upstream_owner:$upstream_branch"
-          status="$(gh api "$compare_url" --jq '.status')"
-          ahead_by="$(gh api "$compare_url" --jq '.ahead_by')"
+          # 注意：GitHub 的 merge-upstream API 只能同步仓库的 fork parent，
+          # 不能指定任意上游仓库。因此这里改用 git remote 直接从指定 upstream 拉取并合并。
 
-          echo "compare status=$status ahead_by=$ahead_by"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          if [ "$status" != "ahead" ] || [ "$ahead_by" -eq 0 ]; then
+          # 确保在分支上（schedule 触发通常是默认分支，但这里显式切过去更稳）
+          git checkout "$branch"
+          git pull --ff-only origin "$branch"
+
+          if git remote get-url upstream >/dev/null 2>&1; then
+            git remote set-url upstream "https://github.com/${upstream_full}.git"
+          else
+            git remote add upstream "https://github.com/${upstream_full}.git"
+          fi
+
+          git fetch --prune upstream "$upstream_branch"
+
+          behind_by="$(git rev-list --count HEAD..upstream/$upstream_branch)"
+          ahead_by="$(git rev-list --count upstream/$upstream_branch..HEAD)"
+
+          echo "git compare: ahead_by=$ahead_by behind_by=$behind_by"
+
+          if [ "$behind_by" -eq 0 ]; then
             echo "No upstream updates; skip."
             echo "updated=false" >> "$GITHUB_OUTPUT"
             echo "branch=$branch" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          echo "Upstream updated; syncing fork..."
+          echo "Upstream has new commits; merging..."
+          git merge --no-edit "upstream/$upstream_branch"
 
-          # 使用 GitHub 官方 merge-upstream API 同步 fork
-          # https://docs.github.com/en/rest/branches/branches#merge-upstream
-          gh api -X POST "repos/$repo/merge-upstream" -f branch="$branch" >/dev/null
+          echo "Pushing to origin/$branch..."
+          git push origin "HEAD:$branch"
 
           echo "updated=true" >> "$GITHUB_OUTPUT"
           echo "branch=$branch" >> "$GITHUB_OUTPUT"
