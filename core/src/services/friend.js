@@ -882,7 +882,7 @@ async function getFriendsList(forceSync = false) {
         const friends = reply.game_friends || [];
         const state = getUserState();
         const result = friends
-            // 面板好友列表不做特定昵称/备注的隐藏过滤（例如“小小农夫”），仅排除自身
+            // 面板好友列表：排除自身；并过滤“名称=小小农夫 且 等级<=1”的条目（仅满足两个条件才过滤）
             .filter(f => toNum(f.gid) !== state.gid)
             .map(f => ({
                 gid: toNum(f.gid),
@@ -897,6 +897,7 @@ async function getFriendsList(forceSync = false) {
                     insectNum: toNum(f.plant.insect_num),
                 } : null,
             }))
+            .filter(friend => !(String(friend.name || '') === '小小农夫' && toNum(friend.level) <= 1))
             .sort((a, b) => {
                 // 固定顺序：先按名称，再按 GID，避免刷新时顺序抖动
                 const an = String(a.name || '');
